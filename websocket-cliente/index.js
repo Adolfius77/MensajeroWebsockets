@@ -122,8 +122,9 @@ const mostrarUsuarios = (lista) => {
         ul.appendChild(li);
     });
 
-    document.getElementById('lblDestinatario').textContent =
-        destinatario === null ? 'Todos' : destinatario;
+    const textoDestino = destinatario === null ? 'Todos' : destinatario;
+    document.getElementById('lblDestinatario').textContent = textoDestino;
+    document.getElementById('lblDestinoProducto').textContent = textoDestino;
 };
 
 const enviarPrivado = () => {
@@ -161,20 +162,41 @@ const recibirPrivado = (cuerpo) => {
     }
 };
 
-const enviarEntidad = () => {
+// Lee los datos del formulario y los convierte en un objeto producto
+const leerProductoDelFormulario = (form) => {
+    const datos = new FormData(form);
+    return {
+        id: parseInt(datos.get('id'), 10),
+        nombre: datos.get('nombre').trim(),
+        precio: parseFloat(datos.get('precio')),
+        stock: parseInt(datos.get('stock'), 10)
+    };
+};
+
+const enviarEntidad = (form) => {
     if (miNombre === null) {
         alert('Primero registra tu nombre');
         return;
     }
+    if (stompCliente === null || !stompCliente.connected) {
+        alert('No hay conexión con el servidor');
+        return;
+    }
+
+    // El nombre no puede ser solo espacios
+    const txtNombreProd = form.querySelector('#txtProdNombre');
+    txtNombreProd.setCustomValidity(txtNombreProd.value.trim() === '' ? 'vacío' : '');
+
+    // Validación del formulario (required, min, step, etc.)
+    if (!form.checkValidity()) {
+        form.classList.add('was-validated');
+        return;
+    }
+
     const mensaje = {
         nombre: miNombre,
         destinatario: destinatario,   // null = todos
-        producto: {
-            id: parseInt(document.getElementById('txtProdId').value),
-            nombre: document.getElementById('txtProdNombre').value,
-            precio: parseFloat(document.getElementById('txtProdPrecio').value),
-            stock: parseInt(document.getElementById('txtProdStock').value)
-        }
+        producto: leerProductoDelFormulario(form)
     };
     stompCliente.publish({
         destination: '/app/entidad',
@@ -183,6 +205,11 @@ const enviarEntidad = () => {
     if (destinatario !== null) {
         agregarEntidad(mensaje);
     }
+
+    // Limpia el formulario para capturar el siguiente producto
+    form.reset();
+    form.classList.remove('was-validated');
+    form.querySelector('#txtProdId').focus();
 };
 
 const recibirEntidad = (cuerpo) => {
@@ -199,7 +226,7 @@ const agregarEntidad = (msg) => {
         msg.destinatario === null ? 'Todos' : msg.destinatario,
         msg.producto.id,
         msg.producto.nombre,
-        msg.producto.precio,
+        '$' + Number(msg.producto.precio).toFixed(2),
         msg.producto.stock
     ].forEach((valor) => {
         const td = document.createElement('td');
@@ -218,8 +245,12 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         enviarPrivado();
     });
-    document.getElementById('btnEnviarEntidad').addEventListener('click', (e) => {
+    const formProducto = document.getElementById('formProducto');
+    formProducto.addEventListener('submit', (e) => {
         e.preventDefault();
-        enviarEntidad();
+        enviarEntidad(formProducto);
+    });
+    formProducto.addEventListener('reset', () => {
+        formProducto.classList.remove('was-validated');
     });
 });
