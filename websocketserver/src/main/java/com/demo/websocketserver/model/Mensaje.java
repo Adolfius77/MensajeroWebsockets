@@ -1,4 +1,9 @@
 package com.demo.websocketserver.model;
 
-public record Mensaje(String nombre, String contenido) {
+public record Mensaje(
+        String nombre,
+        String contenido,
+        TipoMensaje tipoMensaje,
+        String destino
+) {
 }
