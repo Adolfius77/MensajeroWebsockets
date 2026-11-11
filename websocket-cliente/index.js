@@ -3,17 +3,24 @@ let stompCliente = null;
 
 // function to suscribe to the broker
 const onConnectSocket = () => {
-    stompCliente.subscribe('/tema/mensajes', (mensaje) => {
+    stompCliente.subscribe('/topic/chat.publico', (mensaje) => {
         mostrarMensaje(mensaje.body);
     });
-    stompCliente.subscribe('/tema/usuarios', (mensaje) => {
+    stompCliente.subscribe('/topic/usuarios', (mensaje) => {
         mostrarUsuarios(JSON.parse(mensaje.body));
     });
-    stompCliente.subscribe('/tema/privados', (mensaje) => {
+    stompCliente.subscribe('/user/queue/mensajes', (mensaje) => {
         recibirPrivado(mensaje.body);
     });
-    stompCliente.subscribe('/tema/entidades', (mensaje) => {
+    stompCliente.subscribe('/topic/productos', (mensaje) => {
         recibirEntidad(mensaje.body);
+    });
+    stompCliente.subscribe('/user/queue/productos', (mensaje) => {
+        recibirEntidad(mensaje.body);
+    });
+    stompCliente.publish({
+        destination: '/app/chat.registro',
+        body: JSON.stringify({ nombre: miNombre, tipoMensaje: 'JOIN' })
     });
 };
 
@@ -25,31 +32,42 @@ const onWebSocketClose = () => {
 };
 
 // function to connect to websocket
-const conectarWS = () => {
+const conectarWS = (nombre) => {
     // Avoid having many open connections
     onWebSocketClose();
 
     // Create client
     stompCliente = new StompJs.Client({
-        webSocketFactory: () => new WebSocket('ws://localhost:8080/websocket')
+        webSocketFactory: () => new WebSocket('ws://localhost:8080/ws'),
+        connectHeaders: { login: nombre }
     });
     stompCliente.onConnect = onConnectSocket;
     stompCliente.onWebSocketClose = onWebSocketClose;
     stompCliente.activate();
 };
 
+const websocketListo = () => {
+    if (stompCliente === null || !stompCliente.connected) {
+        alert('Espera a que se conecte el mensajero');
+        return false;
+    }
+    return true;
+};
+
 // function to send message
 const enviarMensaje = () => {
+    if (miNombre === null || !websocketListo()) return;
     // Identify elements
     let txtNombre = document.getElementById('txtNombre');
     let txtMensaje = document.getElementById('txtMensaje');
 
     // publish message
     stompCliente.publish({
-        destination: '/app/envio',
+        destination: '/app/chat.publico',
         body: JSON.stringify({
             nombre: txtNombre.value,
-            contenido: txtMensaje.value
+            contenido: txtMensaje.value,
+            tipoMensaje: 'CHAT'
         })
     });
 };
@@ -74,7 +92,6 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         enviarMensaje();
     });
-    conectarWS();
 });
 
 let miNombre = null;
@@ -89,10 +106,8 @@ const registrarse = () => {
     }
     miNombre = nombre;
     document.getElementById('txtNombre').disabled = true;
-    stompCliente.publish({
-        destination: '/app/registro',
-        body: JSON.stringify({ nombre: miNombre })
-    });
+    document.getElementById('btnRegistrar').disabled = true;
+    conectarWS(miNombre);
 };
 
 const mostrarUsuarios = (lista) => {
@@ -136,12 +151,14 @@ const enviarPrivado = () => {
         alert('Selecciona un usuario de la lista');
         return;
     }
+    if (!websocketListo()) return;
     stompCliente.publish({
-        destination: '/app/privado',
+        destination: '/app/chat.privado',
         body: JSON.stringify({
             nombre: miNombre,
-            destinatario: destinatario,
-            contenido: txtMensaje.value
+            destino: destinatario,
+            contenido: txtMensaje.value,
+            tipoMensaje: 'CHAT'
         })
     });
     mostrarMensaje(JSON.stringify({
@@ -153,12 +170,10 @@ const enviarPrivado = () => {
 
 const recibirPrivado = (cuerpo) => {
     const body = JSON.parse(cuerpo);
-    if (body.destinatario === miNombre) {
-        mostrarMensaje(JSON.stringify({
-            nombre: body.nombre + ' (privado)',
-            contenido: body.contenido
-        }));
-    }
+    mostrarMensaje(JSON.stringify({
+        nombre: body.nombre + ' (privado)',
+        contenido: body.contenido
+    }));
 };
 
 const enviarEntidad = () => {
@@ -166,18 +181,17 @@ const enviarEntidad = () => {
         alert('Primero registra tu nombre');
         return;
     }
+    if (!websocketListo()) return;
     const mensaje = {
-        nombre: miNombre,
-        destinatario: destinatario,   // null = todos
-        producto: {
-            id: parseInt(document.getElementById('txtProdId').value),
-            nombre: document.getElementById('txtProdNombre').value,
-            precio: parseFloat(document.getElementById('txtProdPrecio').value),
-            stock: parseInt(document.getElementById('txtProdStock').value)
-        }
+        id: document.getElementById('txtProdId').value,
+        nombre: document.getElementById('txtProdNombre').value,
+        precio: parseFloat(document.getElementById('txtProdPrecio').value),
+        stock: parseInt(document.getElementById('txtProdStock').value),
+        emisor: miNombre,
+        destino: destinatario
     };
     stompCliente.publish({
-        destination: '/app/entidad',
+        destination: '/app/producto.enviar',
         body: JSON.stringify(mensaje)
     });
     if (destinatario !== null) {
@@ -187,20 +201,18 @@ const enviarEntidad = () => {
 
 const recibirEntidad = (cuerpo) => {
     const body = JSON.parse(cuerpo);
-    if (body.destinatario === null || body.destinatario === miNombre) {
-        agregarEntidad(body);
-    }
+    agregarEntidad(body);
 };
 
 const agregarEntidad = (msg) => {
     const tr = document.createElement('tr');
     [
+        msg.emisor,
+        msg.destino === null ? 'Todos' : msg.destino,
+        msg.id,
         msg.nombre,
-        msg.destinatario === null ? 'Todos' : msg.destinatario,
-        msg.producto.id,
-        msg.producto.nombre,
-        msg.producto.precio,
-        msg.producto.stock
+        msg.precio,
+        msg.stock
     ].forEach((valor) => {
         const td = document.createElement('td');
         td.textContent = valor;

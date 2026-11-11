@@ -3,11 +3,13 @@ package com.demo.websocketserver.controller;
 import com.demo.websocketserver.model.Mensaje;
 import com.demo.websocketserver.model.Producto;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.event.EventListener;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,6 +33,13 @@ public class MensajeController {
             usuariosConectados.remove(mensaje.nombre());
         }
         return usuariosConectados;
+    }
+
+    @EventListener
+    public void alDesconectar(SessionDisconnectEvent evento) {
+        if (evento.getUser() != null && usuariosConectados.remove(evento.getUser().getName())) {
+            template.convertAndSend("/topic/usuarios", usuariosConectados);
+        }
     }
     @MessageMapping("/chat.publico")
     @SendTo
