@@ -4,6 +4,8 @@ public record Producto(
         String id,
         String nombre,
         double precio,
-        String destino
+        String destino,
+        String emisor,
+        int stock
 ) {
 }
