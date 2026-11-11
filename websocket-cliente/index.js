@@ -3,6 +3,7 @@ let stompCliente = null;
 
 // function to suscribe to the broker
 const onConnectSocket = () => {
+    setEstado(true);
     stompCliente.subscribe('/topic/chat.publico', (mensaje) => {
         mostrarMensaje(mensaje.body);
     });
@@ -26,6 +27,9 @@ const onConnectSocket = () => {
 
 // what to do when websocket closes
 const onWebSocketClose = () => {
+    setEstado(false);
+    document.getElementById('txtNombre').disabled = false;
+    document.getElementById('btnRegistrar').disabled = false;
     if (stompCliente !== null) {
         stompCliente.deactivate();
     }
@@ -58,31 +62,47 @@ const websocketListo = () => {
 const enviarMensaje = () => {
     if (miNombre === null || !websocketListo()) return;
     // Identify elements
-    let txtNombre = document.getElementById('txtNombre');
     let txtMensaje = document.getElementById('txtMensaje');
 
     // publish message
     stompCliente.publish({
         destination: '/app/chat.publico',
         body: JSON.stringify({
-            nombre: txtNombre.value,
+            nombre: miNombre,
             contenido: txtMensaje.value,
             tipoMensaje: 'CHAT'
         })
     });
+    txtMensaje.value = '';
 };
 
-// function to show message
+// function to show message (burbujas de chat)
 const mostrarMensaje = (mensaje) => {
-    // parse message from JSON
     const body = JSON.parse(mensaje);
-    // get elements from html
-    const ULMensajes = document.getElementById('ULMensajes');
-    // Add message creating 'li' elements
-    const mensajeLI = document.createElement('li');
-    mensajeLI.classList.add('list-group-item');
-    mensajeLI.innerHTML = `<strong>${body.nombre}</strong>: ${body.contenido}`;
-    ULMensajes.appendChild(mensajeLI);
+    const esPrivado = /privado/i.test(body.nombre);
+    const esPropio = esPrivado ? body.nombre.startsWith('Tú') : body.nombre === miNombre;
+
+    const li = document.createElement('li');
+    li.classList.add('msg', esPropio ? 'msg--own' : 'msg--other');
+    if (esPrivado) li.classList.add('msg--private');
+
+    const autor = document.createElement('span');
+    autor.className = 'msg__author';
+    autor.textContent = body.nombre;
+    const texto = document.createElement('span');
+    texto.textContent = body.contenido;
+
+    li.append(autor, texto);
+    document.getElementById('ULMensajes').appendChild(li);
+
+    const caja = document.getElementById('mensajes');
+    caja.scrollTop = caja.scrollHeight;
+};
+
+// indicador visual de conexión
+const setEstado = (conectado) => {
+    document.getElementById('estadoConexion').classList.toggle('status-pill--on', conectado);
+    document.getElementById('txtEstado').textContent = conectado ? 'Conectado' : 'Desconectado';
 };
 
 // Event when all DOM Content is loaded
@@ -91,6 +111,9 @@ document.addEventListener('DOMContentLoaded', () => {
     btnEnviar.addEventListener('click', (e) => {
         e.preventDefault();
         enviarMensaje();
+    });
+    document.getElementById('txtMensaje').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); enviarMensaje(); }
     });
 });
 
@@ -181,7 +204,7 @@ const recibirPrivado = (cuerpo) => {
 const leerProductoDelFormulario = (form) => {
     const datos = new FormData(form);
     return {
-        id: parseInt(datos.get('id'), 10),
+        id: String(parseInt(datos.get('id'), 10)),
         nombre: datos.get('nombre').trim(),
         precio: parseFloat(datos.get('precio')),
         stock: parseInt(datos.get('stock'), 10)
@@ -209,9 +232,9 @@ const enviarEntidad = (form) => {
     }
 
     const mensaje = {
-        nombre: miNombre,
-        destinatario: destinatario,   // null = todos
-        producto: leerProductoDelFormulario(form)
+        ...leerProductoDelFormulario(form),
+        destino: destinatario,   // null = todos
+        emisor: miNombre
     };
     stompCliente.publish({
         destination: '/app/producto.enviar',
@@ -236,14 +259,11 @@ const agregarEntidad = (msg) => {
     const tr = document.createElement('tr');
     [
         msg.emisor,
-        msg.destino === null ? 'Todos' : msg.destino,
+        msg.destino ? msg.destino : 'Todos',
         msg.id,
         msg.nombre,
-        msg.destinatario === null ? 'Todos' : msg.destinatario,
-        msg.producto.id,
-        msg.producto.nombre,
-        '$' + Number(msg.producto.precio).toFixed(2),
-        msg.producto.stock
+        '$' + Number(msg.precio).toFixed(2),
+        msg.stock
     ].forEach((valor) => {
         const td = document.createElement('td');
         td.textContent = valor;
