@@ -1,0 +1,13 @@
+package com.demo.websocketserver;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+
+@SpringBootTest
+class WebsocketserverApplicationTests {
+
+	@Test
+	void contextLoads() {
+	}
+
+}
